@@ -61,8 +61,7 @@ $$;
 CREATE OR REPLACE FUNCTION get_project_url() RETURNS TEXT
 LANGUAGE plpgsql AS $$
 BEGIN
-    -- REEMPLAZAR ESTO CON LA URL DE TU PROYECTO SUPABASE
-    RETURN 'https://TU_PROYECTO.supabase.co';
+    RETURN 'https://sjjnovsiuhjgjtqsqwbt.supabase.co';
 END;
 $$;
 
