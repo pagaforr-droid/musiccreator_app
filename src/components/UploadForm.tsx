@@ -1,4 +1,4 @@
-import { useState, useCallback, FormEvent } from 'react';
+import { useState, useCallback, type FormEvent } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { supabase } from '../lib/supabase';
 import { Upload, Music, Settings, Loader2 } from 'lucide-react';
