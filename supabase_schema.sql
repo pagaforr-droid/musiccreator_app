@@ -100,10 +100,11 @@ BEGIN
     api_key := get_replicate_key();
 
     SELECT net.http_post(
-        url := 'https://api.replicate.com/v1/models/cwalo/all-in-one-music-structure-analysis/predictions',
+        url := 'https://api.replicate.com/v1/predictions',
         headers := jsonb_build_object('Authorization', 'Bearer ' || api_key, 'Content-Type', 'application/json'),
         body := jsonb_build_object(
-            'input', jsonb_build_object('audio', p_audio_url),
+            'version', '6deeba047db17da69e9826c0285cd137cd2a81af05eb44ff496b7acd69b3a383',
+            'input', jsonb_build_object('music_input', p_audio_url),
             'webhook', get_project_url() || '/rest/v1/rpc/webhook_phase_1?apikey=' || get_anon_key() || '&gen_id=' || new_gen_id,
             'webhook_events_filter', jsonb_build_array('completed')
         )
@@ -123,9 +124,14 @@ DECLARE
     v_style TEXT;
     api_key TEXT;
     req_id BIGINT;
+    chords_str TEXT;
 BEGIN
     v_bpm := (payload->'output'->>'bpm')::NUMERIC;
     v_chords := payload->'output'->'chords';
+
+    -- Convertir JSON de acordes a string si es necesario, o intentar enviar el JSON.
+    -- Musicongen espera un string de progresión de acordes.
+    chords_str := COALESCE(v_chords::TEXT, 'C G A:min F');
 
     UPDATE public.generations 
     SET extracted_bpm = v_bpm, extracted_chords = v_chords, status = 'generating', updated_at = NOW()
@@ -135,12 +141,14 @@ BEGIN
     api_key := get_replicate_key();
 
     SELECT net.http_post(
-        url := 'https://api.replicate.com/v1/models/sakemin/musicongen/predictions',
+        url := 'https://api.replicate.com/v1/predictions',
         headers := jsonb_build_object('Authorization', 'Bearer ' || api_key, 'Content-Type', 'application/json'),
         body := jsonb_build_object(
+            'version', 'a05ec8bdf5cc902cd849077d985029ce9b05e3dfb98a2d74accc9c94fdf15747',
             'input', jsonb_build_object(
-                'prompt', 'Isolated ' || v_instrument || ' stem, ' || v_style || ' style. Tempo: ' || COALESCE(v_bpm::TEXT, '120') || ' bpm.',
-                'chords', v_chords
+                'prompt', 'Isolated ' || v_instrument || ' stem, ' || v_style || ' style.',
+                'chord_progression', chords_str,
+                'bpm', COALESCE(v_bpm, 120)
             ),
             'webhook', get_project_url() || '/rest/v1/rpc/webhook_phase_2?apikey=' || get_anon_key() || '&gen_id=' || gen_id,
             'webhook_events_filter', jsonb_build_array('completed')
@@ -166,9 +174,10 @@ BEGIN
     api_key := get_replicate_key();
 
     SELECT net.http_post(
-        url := 'https://api.replicate.com/v1/models/lucataco/mvsep-mdx23-music-separation/predictions',
+        url := 'https://api.replicate.com/v1/predictions',
         headers := jsonb_build_object('Authorization', 'Bearer ' || api_key, 'Content-Type', 'application/json'),
         body := jsonb_build_object(
+            'version', '510b9b91aec1bfa7d634e6c06ee80c18492fb0fc06aa1474533fbda90dd3dba4',
             'input', jsonb_build_object('audio', v_generated_audio),
             'webhook', get_project_url() || '/rest/v1/rpc/webhook_phase_3?apikey=' || get_anon_key() || '&gen_id=' || gen_id,
             'webhook_events_filter', jsonb_build_array('completed')
