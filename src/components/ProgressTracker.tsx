@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Loader2, Music4, CheckCircle2, AlertTriangle, Download, Sparkles } from 'lucide-react';
+import { Loader2, Music4, CheckCircle2, AlertTriangle, Download, Sparkles, Terminal } from 'lucide-react';
 
 interface ProgressTrackerProps {
   generationId: string;
@@ -9,6 +9,15 @@ interface ProgressTrackerProps {
 export function ProgressTracker({ generationId }: ProgressTrackerProps) {
   const [status, setStatus] = useState<string>('pending');
   const [stemUrl, setStemUrl] = useState<string | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
+  const [debugLogs, setDebugLogs] = useState<any[]>([]);
+
+  const fetchLogs = async () => {
+    const { data, error } = await supabase.rpc('get_system_logs');
+    if (!error && data) {
+      setDebugLogs(data);
+    }
+  };
 
   useEffect(() => {
     const fetchStatus = async () => {
@@ -41,6 +50,14 @@ export function ProgressTracker({ generationId }: ProgressTrackerProps) {
     return () => { supabase.removeChannel(channel); };
   }, [generationId]);
 
+  useEffect(() => {
+    if (showDebug) {
+      fetchLogs();
+      const interval = setInterval(fetchLogs, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [showDebug]);
+
   const steps = [
     { id: 'analyzing', label: 'Extracción Estructural', desc: 'Determinando BPM y mapa de acordes' },
     { id: 'generating', label: 'Síntesis Neuronal', desc: 'Generando pista en el espacio latente' },
@@ -72,14 +89,23 @@ export function ProgressTracker({ generationId }: ProgressTrackerProps) {
           <div className="absolute top-0 left-0 w-1/2 h-1 bg-indigo-400 animate-slide-right"></div>
         )}
 
-        <div className="flex items-center gap-4 mb-10">
-          <div className="p-3 bg-indigo-500/20 rounded-xl border border-indigo-500/30">
-            <Sparkles className="w-6 h-6 text-indigo-400" />
+        <div className="flex items-center justify-between mb-10">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-indigo-500/20 rounded-xl border border-indigo-500/30">
+              <Sparkles className="w-6 h-6 text-indigo-400" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-slate-100">Pipeline en Ejecución</h2>
+              <p className="text-slate-400 text-sm">Monitoreo de telemetría ML</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-2xl font-bold text-slate-100">Pipeline en Ejecución</h2>
-            <p className="text-slate-400 text-sm">Monitoreo de telemetría ML</p>
-          </div>
+          <button 
+            onClick={() => setShowDebug(!showDebug)}
+            className={`p-2 rounded-lg border transition-colors ${showDebug ? 'bg-slate-700 border-slate-500 text-white' : 'bg-slate-800/50 border-slate-700 text-slate-400 hover:text-white'}`}
+            title="Detector de Bugs"
+          >
+            <Terminal className="w-5 h-5" />
+          </button>
         </div>
         
         <div className="space-y-8 relative before:absolute before:inset-0 before:ml-[1.125rem] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-indigo-500/50 before:via-slate-700 before:to-transparent">
@@ -114,6 +140,34 @@ export function ProgressTracker({ generationId }: ProgressTrackerProps) {
             );
           })}
         </div>
+
+        {/* Debug Console */}
+        {showDebug && (
+          <div className="mt-8 bg-black/80 rounded-xl border border-slate-700 p-4 font-mono text-xs overflow-hidden">
+            <div className="flex justify-between text-slate-400 mb-2 border-b border-slate-800 pb-2">
+              <span>TERMINAL DE DEPURACIÓN (HTTP OUTBOUND)</span>
+              <span className="flex items-center gap-2"><div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div> EN VIVO</span>
+            </div>
+            <div className="space-y-3 max-h-60 overflow-y-auto">
+              {debugLogs.length === 0 ? (
+                <p className="text-slate-500">Esperando respuestas de red...</p>
+              ) : (
+                debugLogs.map((log, i) => (
+                  <div key={i} className="border-l-2 border-slate-700 pl-3">
+                    <div className="flex gap-2 text-slate-500">
+                      <span>[{new Date(log.created_at).toLocaleTimeString()}]</span>
+                      <span className={log.status_code >= 400 ? 'text-red-400' : log.status_code >= 200 ? 'text-green-400' : 'text-yellow-400'}>
+                        HTTP {log.status_code || 'ERROR'}
+                      </span>
+                    </div>
+                    {log.error_msg && <div className="text-red-400">{log.error_msg}</div>}
+                    {log.response && <div className="text-indigo-300 mt-1 whitespace-pre-wrap break-all">{log.response.substring(0, 300)}{log.response.length > 300 ? '...' : ''}</div>}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Completion Player */}
