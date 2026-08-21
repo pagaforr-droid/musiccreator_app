@@ -125,11 +125,17 @@ DECLARE
     api_key TEXT;
     req_id BIGINT;
     chords_str TEXT;
-BEGIN
-    v_bpm := (payload->'output'->>'bpm')::NUMERIC;
-    v_chords := payload->'output'->'chords';
+    -- Replicate cwalo model returns an array of URIs, not a JSON object.
+    -- Attempting to extract ->'bpm' from an array crashes Postgres.
+    -- Safely attempt to parse if it's an object, otherwise fallback.
+    IF jsonb_typeof(payload->'output') = 'object' THEN
+        v_bpm := (payload->'output'->>'bpm')::NUMERIC;
+        v_chords := payload->'output'->'chords';
+    ELSE
+        v_bpm := NULL;
+        v_chords := NULL;
+    END IF;
 
-    -- Convertir JSON de acordes a string si es necesario, o intentar enviar el JSON.
     -- Musicongen espera un string de progresión de acordes.
     chords_str := COALESCE(v_chords::TEXT, 'C G A:min F');
 
