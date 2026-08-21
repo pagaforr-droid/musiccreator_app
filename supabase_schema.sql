@@ -65,7 +65,7 @@ BEGIN
 END;
 $$;
 
--- FASE 1: Iniciar Generación
+-- FASE 1: Iniciar Generación (Usa cwalo/all-in-one-music-structure-analysis)
 CREATE OR REPLACE FUNCTION start_generation(p_session_id UUID, p_audio_url TEXT, p_instrument TEXT, p_style TEXT)
 RETURNS UUID LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
@@ -79,11 +79,11 @@ BEGIN
 
     api_key := get_replicate_key();
 
+    -- Usamos el endpoint directo del modelo para no necesitar el hash de versión
     SELECT net.http_post(
-        url := 'https://api.replicate.com/v1/predictions',
+        url := 'https://api.replicate.com/v1/models/cwalo/all-in-one-music-structure-analysis/predictions',
         headers := jsonb_build_object('Authorization', 'Bearer ' || api_key, 'Content-Type', 'application/json'),
         body := jsonb_build_object(
-            'version', '6c611484ff35b8e970258d4a974b78807963d81b3699b8214fa3f443b749d0cb',
             'input', jsonb_build_object('audio', p_audio_url),
             'webhook', get_project_url() || '/rest/v1/rpc/webhook_phase_1?gen_id=' || new_gen_id,
             'webhook_events_filter', jsonb_build_array('completed')
@@ -94,7 +94,7 @@ BEGIN
 END;
 $$;
 
--- FASE 2: Webhook Fase 1
+-- FASE 2: Webhook Fase 1 (Llama a sakemin/musicongen)
 CREATE OR REPLACE FUNCTION webhook_phase_1(payload JSONB, gen_id UUID)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
@@ -105,6 +105,7 @@ DECLARE
     api_key TEXT;
     req_id BIGINT;
 BEGIN
+    -- Extraemos de forma genérica (dependerá del output exacto de cwalo)
     v_bpm := (payload->'output'->>'bpm')::NUMERIC;
     v_chords := payload->'output'->'chords';
 
@@ -116,12 +117,11 @@ BEGIN
     api_key := get_replicate_key();
 
     SELECT net.http_post(
-        url := 'https://api.replicate.com/v1/predictions',
+        url := 'https://api.replicate.com/v1/models/sakemin/musicongen/predictions',
         headers := jsonb_build_object('Authorization', 'Bearer ' || api_key, 'Content-Type', 'application/json'),
         body := jsonb_build_object(
-            'version', 'b05b1dff1d8c6dc63d14b0cdb421ce5311358b196881775ee761a2933db6a2a0', -- Dummy musicgen version
             'input', jsonb_build_object(
-                'prompt', 'Isolated ' || v_instrument || ' stem, ' || v_style || ' style. Tempo: ' || v_bpm || ' bpm.',
+                'prompt', 'Isolated ' || v_instrument || ' stem, ' || v_style || ' style. Tempo: ' || COALESCE(v_bpm::TEXT, '120') || ' bpm.',
                 'chords', v_chords
             ),
             'webhook', get_project_url() || '/rest/v1/rpc/webhook_phase_2?gen_id=' || gen_id,
@@ -133,7 +133,7 @@ BEGIN
 END;
 $$;
 
--- FASE 3: Webhook Fase 2
+-- FASE 3: Webhook Fase 2 (Llama a lucataco/mvsep-mdx23-music-separation)
 CREATE OR REPLACE FUNCTION webhook_phase_2(payload JSONB, gen_id UUID)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
@@ -148,10 +148,9 @@ BEGIN
     api_key := get_replicate_key();
 
     SELECT net.http_post(
-        url := 'https://api.replicate.com/v1/predictions',
+        url := 'https://api.replicate.com/v1/models/lucataco/mvsep-mdx23-music-separation/predictions',
         headers := jsonb_build_object('Authorization', 'Bearer ' || api_key, 'Content-Type', 'application/json'),
         body := jsonb_build_object(
-            'version', '6c611484ff35b8e970258d4a974b78807963d81b3699b8214fa3f443b749d0cb',
             'input', jsonb_build_object('audio', v_generated_audio),
             'webhook', get_project_url() || '/rest/v1/rpc/webhook_phase_3?gen_id=' || gen_id,
             'webhook_events_filter', jsonb_build_array('completed')
@@ -186,3 +185,16 @@ BEGIN
     RETURN jsonb_build_object('status', 'success');
 END;
 $$;
+
+-- ==============================================================================
+-- STORAGE SECURITY POLICIES (Fixing "new row violates row-level security policy")
+-- ==============================================================================
+-- Permitir subida de archivos (INSERT) al bucket reference_audio para usuarios anónimos
+CREATE POLICY "Permitir subida anonima a reference_audio" 
+ON storage.objects FOR INSERT TO anon 
+WITH CHECK (bucket_id = 'reference_audio');
+
+-- Permitir lectura (SELECT) de archivos en el bucket reference_audio
+CREATE POLICY "Permitir lectura publica de reference_audio" 
+ON storage.objects FOR SELECT TO anon 
+USING (bucket_id = 'reference_audio');
