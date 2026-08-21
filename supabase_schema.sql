@@ -125,6 +125,7 @@ DECLARE
     api_key TEXT;
     req_id BIGINT;
     chords_str TEXT;
+BEGIN
     -- Replicate cwalo model returns an array of URIs, not a JSON object.
     -- Attempting to extract ->'bpm' from an array crashes Postgres.
     -- Safely attempt to parse if it's an object, otherwise fallback.
