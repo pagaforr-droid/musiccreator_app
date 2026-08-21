@@ -14,9 +14,9 @@ BEGIN
         )
     ) INTO logs
     FROM (
-        SELECT id, status_code, error_msg, created_at, content 
+        SELECT id, status_code, error_msg, created, content 
         FROM net._http_response 
-        ORDER BY created_at DESC 
+        ORDER BY created DESC 
         LIMIT 5
     ) sub;
     
