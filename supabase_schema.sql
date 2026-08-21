@@ -115,7 +115,21 @@ END;
 $$;
 
 -- FASE 2: Webhook Fase 1 (Llama a sakemin/musicongen)
-CREATE OR REPLACE FUNCTION webhook_phase_1(payload JSONB, gen_id UUID)
+CREATE OR REPLACE FUNCTION webhook_phase_1(
+    gen_id UUID,
+    status TEXT DEFAULT NULL,
+    output JSONB DEFAULT NULL,
+    error TEXT DEFAULT NULL,
+    id TEXT DEFAULT NULL,
+    version TEXT DEFAULT NULL,
+    created_at TEXT DEFAULT NULL,
+    started_at TEXT DEFAULT NULL,
+    completed_at TEXT DEFAULT NULL,
+    logs TEXT DEFAULT NULL,
+    input JSONB DEFAULT NULL,
+    metrics JSONB DEFAULT NULL,
+    urls JSONB DEFAULT NULL
+)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
     v_bpm NUMERIC;
@@ -126,18 +140,19 @@ DECLARE
     req_id BIGINT;
     chords_str TEXT;
 BEGIN
-    -- Replicate cwalo model returns an array of URIs, not a JSON object.
-    -- Attempting to extract ->'bpm' from an array crashes Postgres.
-    -- Safely attempt to parse if it's an object, otherwise fallback.
-    IF jsonb_typeof(payload->'output') = 'object' THEN
-        v_bpm := (payload->'output'->>'bpm')::NUMERIC;
-        v_chords := payload->'output'->'chords';
+    IF status != 'succeeded' THEN
+        UPDATE public.generations SET status = 'failed', updated_at = NOW() WHERE id = gen_id;
+        RETURN jsonb_build_object('status', 'error', 'msg', error);
+    END IF;
+
+    IF jsonb_typeof(output) = 'object' THEN
+        v_bpm := (output->>'bpm')::NUMERIC;
+        v_chords := output->'chords';
     ELSE
         v_bpm := NULL;
         v_chords := NULL;
     END IF;
 
-    -- Musicongen espera un string de progresión de acordes.
     chords_str := COALESCE(v_chords::TEXT, 'C G A:min F');
 
     UPDATE public.generations 
@@ -167,14 +182,34 @@ END;
 $$;
 
 -- FASE 3: Webhook Fase 2 (Llama a lucataco/mvsep-mdx23-music-separation)
-CREATE OR REPLACE FUNCTION webhook_phase_2(payload JSONB, gen_id UUID)
+CREATE OR REPLACE FUNCTION webhook_phase_2(
+    gen_id UUID,
+    status TEXT DEFAULT NULL,
+    output JSONB DEFAULT NULL,
+    error TEXT DEFAULT NULL,
+    id TEXT DEFAULT NULL,
+    version TEXT DEFAULT NULL,
+    created_at TEXT DEFAULT NULL,
+    started_at TEXT DEFAULT NULL,
+    completed_at TEXT DEFAULT NULL,
+    logs TEXT DEFAULT NULL,
+    input JSONB DEFAULT NULL,
+    metrics JSONB DEFAULT NULL,
+    urls JSONB DEFAULT NULL
+)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
     v_generated_audio TEXT;
     api_key TEXT;
     req_id BIGINT;
 BEGIN
-    v_generated_audio := payload->>'output';
+    IF status != 'succeeded' THEN
+        UPDATE public.generations SET status = 'failed', updated_at = NOW() WHERE id = gen_id;
+        RETURN jsonb_build_object('status', 'error', 'msg', error);
+    END IF;
+
+    -- Sakemin returns a URL string
+    v_generated_audio := output#>>'{}';
 
     UPDATE public.generations SET status = 'cleaning', updated_at = NOW() WHERE id = gen_id;
 
@@ -196,20 +231,39 @@ END;
 $$;
 
 -- FASE FINAL: Webhook Fase 3
-CREATE OR REPLACE FUNCTION webhook_phase_3(payload JSONB, gen_id UUID)
+CREATE OR REPLACE FUNCTION webhook_phase_3(
+    gen_id UUID,
+    status TEXT DEFAULT NULL,
+    output JSONB DEFAULT NULL,
+    error TEXT DEFAULT NULL,
+    id TEXT DEFAULT NULL,
+    version TEXT DEFAULT NULL,
+    created_at TEXT DEFAULT NULL,
+    started_at TEXT DEFAULT NULL,
+    completed_at TEXT DEFAULT NULL,
+    logs TEXT DEFAULT NULL,
+    input JSONB DEFAULT NULL,
+    metrics JSONB DEFAULT NULL,
+    urls JSONB DEFAULT NULL
+)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
     v_instrument TEXT;
     v_final_url TEXT;
 BEGIN
+    IF status != 'succeeded' THEN
+        UPDATE public.generations SET status = 'failed', updated_at = NOW() WHERE id = gen_id;
+        RETURN jsonb_build_object('status', 'error', 'msg', error);
+    END IF;
+
     SELECT target_instrument INTO v_instrument FROM public.generations WHERE id = gen_id;
 
     IF v_instrument = 'Bajo' THEN
-        v_final_url := payload->'output'->>'bass';
+        v_final_url := output->>'bass';
     ELSIF v_instrument = 'Batería' THEN
-        v_final_url := payload->'output'->>'drums';
+        v_final_url := output->>'drums';
     ELSE
-        v_final_url := payload->'output'->>'other';
+        v_final_url := output->>'other';
     END IF;
 
     UPDATE public.generations 
@@ -221,9 +275,9 @@ END;
 $$;
 
 -- Otorgar permisos de ejecución a los webhooks para que anon pueda llamarlos
-GRANT EXECUTE ON FUNCTION webhook_phase_1(JSONB, UUID) TO anon;
-GRANT EXECUTE ON FUNCTION webhook_phase_2(JSONB, UUID) TO anon;
-GRANT EXECUTE ON FUNCTION webhook_phase_3(JSONB, UUID) TO anon;
+GRANT EXECUTE ON FUNCTION webhook_phase_1 TO anon;
+GRANT EXECUTE ON FUNCTION webhook_phase_2 TO anon;
+GRANT EXECUTE ON FUNCTION webhook_phase_3 TO anon;
 
 -- ==============================================================================
 -- STORAGE SECURITY POLICIES (Fixing "new row violates row-level security policy")
