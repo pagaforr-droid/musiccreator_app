@@ -18,6 +18,9 @@ CREATE POLICY "Block anon on config" ON public.app_config FOR ALL TO anon USING 
 INSERT INTO public.app_config (key, value) VALUES ('replicate_api_key', 'INSERT_YOUR_REPLICATE_API_KEY_HERE')
 ON CONFLICT (key) DO NOTHING;
 
+INSERT INTO public.app_config (key, value) VALUES ('supabase_anon_key', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqam5vdnNpdWhqZ2p0cXNxd2J0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczNDI1NTksImV4cCI6MjEwMjkxODU1OX0.8chAAmC2LetDjQoA1sMP9It-3nhsw2eGhuFevu3HpPE')
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+
 -- 3. Crear tipo Enum para los estados
 DO $$ BEGIN
     CREATE TYPE generation_status AS ENUM ('pending', 'analyzing', 'generating', 'cleaning', 'completed', 'failed');
@@ -65,6 +68,16 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION get_anon_key() RETURNS TEXT
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+    secret_key TEXT;
+BEGIN
+    SELECT value INTO secret_key FROM public.app_config WHERE key = 'supabase_anon_key';
+    RETURN secret_key;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION get_project_url() RETURNS TEXT
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -86,13 +99,12 @@ BEGIN
 
     api_key := get_replicate_key();
 
-    -- Usamos el endpoint directo del modelo para no necesitar el hash de versión
     SELECT net.http_post(
         url := 'https://api.replicate.com/v1/models/cwalo/all-in-one-music-structure-analysis/predictions',
         headers := jsonb_build_object('Authorization', 'Bearer ' || api_key, 'Content-Type', 'application/json'),
         body := jsonb_build_object(
             'input', jsonb_build_object('audio', p_audio_url),
-            'webhook', get_project_url() || '/rest/v1/rpc/webhook_phase_1?gen_id=' || new_gen_id,
+            'webhook', get_project_url() || '/rest/v1/rpc/webhook_phase_1?apikey=' || get_anon_key() || '&gen_id=' || new_gen_id,
             'webhook_events_filter', jsonb_build_array('completed')
         )
     ) INTO req_id;
@@ -112,7 +124,6 @@ DECLARE
     api_key TEXT;
     req_id BIGINT;
 BEGIN
-    -- Extraemos de forma genérica (dependerá del output exacto de cwalo)
     v_bpm := (payload->'output'->>'bpm')::NUMERIC;
     v_chords := payload->'output'->'chords';
 
@@ -131,7 +142,7 @@ BEGIN
                 'prompt', 'Isolated ' || v_instrument || ' stem, ' || v_style || ' style. Tempo: ' || COALESCE(v_bpm::TEXT, '120') || ' bpm.',
                 'chords', v_chords
             ),
-            'webhook', get_project_url() || '/rest/v1/rpc/webhook_phase_2?gen_id=' || gen_id,
+            'webhook', get_project_url() || '/rest/v1/rpc/webhook_phase_2?apikey=' || get_anon_key() || '&gen_id=' || gen_id,
             'webhook_events_filter', jsonb_build_array('completed')
         )
     ) INTO req_id;
@@ -159,7 +170,7 @@ BEGIN
         headers := jsonb_build_object('Authorization', 'Bearer ' || api_key, 'Content-Type', 'application/json'),
         body := jsonb_build_object(
             'input', jsonb_build_object('audio', v_generated_audio),
-            'webhook', get_project_url() || '/rest/v1/rpc/webhook_phase_3?gen_id=' || gen_id,
+            'webhook', get_project_url() || '/rest/v1/rpc/webhook_phase_3?apikey=' || get_anon_key() || '&gen_id=' || gen_id,
             'webhook_events_filter', jsonb_build_array('completed')
         )
     ) INTO req_id;
@@ -192,6 +203,11 @@ BEGIN
     RETURN jsonb_build_object('status', 'success');
 END;
 $$;
+
+-- Otorgar permisos de ejecución a los webhooks para que anon pueda llamarlos
+GRANT EXECUTE ON FUNCTION webhook_phase_1(JSONB, UUID) TO anon;
+GRANT EXECUTE ON FUNCTION webhook_phase_2(JSONB, UUID) TO anon;
+GRANT EXECUTE ON FUNCTION webhook_phase_3(JSONB, UUID) TO anon;
 
 -- ==============================================================================
 -- STORAGE SECURITY POLICIES (Fixing "new row violates row-level security policy")
