@@ -1,10 +1,36 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --animate-fade-in-up: fade-in-up 0.5s ease-out forwards;
+  --animate-gradient-x: gradient-x 3s ease infinite;
+  --animate-slide-right: slide-right 2s ease-in-out infinite;
+  
+  @keyframes fade-in-up {
+    0% { opacity: 0; transform: translateY(20px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes gradient-x {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+  @keyframes slide-right {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(200%); }
+  }
+}
 
 body {
   margin: 0;
   padding: 0;
-  background-color: #0f172a; /* Slate 900 */
-  color: #f8fafc; /* Slate 50 */
+  background-color: #09090b;
+  color: #f8fafc;
+}
+
+/* Custom styling for the audio player */
+audio.custom-audio::-webkit-media-controls-panel {
+  background-color: #1e293b;
+}
+audio.custom-audio::-webkit-media-controls-current-time-display,
+audio.custom-audio::-webkit-media-controls-time-remaining-display {
+  color: #fff;
 }

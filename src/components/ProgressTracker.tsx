@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Loader2, Music4, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Loader2, Music4, CheckCircle2, AlertTriangle, Download, Sparkles } from 'lucide-react';
 
 interface ProgressTrackerProps {
   generationId: string;
@@ -11,7 +11,6 @@ export function ProgressTracker({ generationId }: ProgressTrackerProps) {
   const [stemUrl, setStemUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    // 1. Fetch initial status
     const fetchStatus = async () => {
       const { data } = await supabase
         .from('generations')
@@ -26,18 +25,11 @@ export function ProgressTracker({ generationId }: ProgressTrackerProps) {
     };
     fetchStatus();
 
-    // 2. Subscribe to realtime updates
     const channel = supabase.channel(`generation_${generationId}`)
       .on(
         'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'generations',
-          filter: `id=eq.${generationId}`,
-        },
+        { event: 'UPDATE', schema: 'public', table: 'generations', filter: `id=eq.${generationId}` },
         (payload) => {
-          console.log('Realtime update:', payload.new);
           setStatus(payload.new.status);
           if (payload.new.final_stem_url) {
             setStemUrl(payload.new.final_stem_url);
@@ -46,82 +38,110 @@ export function ProgressTracker({ generationId }: ProgressTrackerProps) {
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [generationId]);
 
   const steps = [
-    { id: 'analyzing', label: 'Analizando estructura musical (Tempo/Acordes)' },
-    { id: 'generating', label: 'Generando pista condicional' },
-    { id: 'cleaning', label: 'Aislando frecuencias y limpiando stem' },
-    { id: 'completed', label: 'Completado' },
+    { id: 'analyzing', label: 'Extracción Estructural', desc: 'Determinando BPM y mapa de acordes' },
+    { id: 'generating', label: 'Síntesis Neuronal', desc: 'Generando pista en el espacio latente' },
+    { id: 'cleaning', label: 'Aislamiento de Frecuencias', desc: 'Limpiando sangría acústica usando MDX23' },
+    { id: 'completed', label: 'Stem Finalizado', desc: 'Renderización completada' },
   ];
 
-  const getCurrentStepIndex = () => {
-    if (status === 'failed') return -1;
-    if (status === 'pending') return 0;
-    return steps.findIndex(s => s.id === status);
-  };
-
-  const currentIndex = getCurrentStepIndex();
+  const currentIndex = status === 'failed' ? -1 : status === 'pending' ? 0 : steps.findIndex(s => s.id === status);
 
   if (status === 'failed') {
     return (
-      <div className="max-w-xl mx-auto bg-red-900/20 p-8 rounded-xl border border-red-800 text-center">
-        <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-        <h3 className="text-xl font-bold text-red-400">La generación ha fallado</h3>
-        <p className="text-red-300 mt-2">Ocurrió un error en el pipeline de IA.</p>
+      <div className="max-w-2xl mx-auto bg-red-950/30 p-8 rounded-2xl border border-red-900/50 text-center backdrop-blur-xl shadow-2xl">
+        <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+          <AlertTriangle className="w-10 h-10 text-red-500" />
+        </div>
+        <h3 className="text-2xl font-bold text-red-400 mb-2">Anomalía Detectada</h3>
+        <p className="text-red-300/80">El pipeline de inferencia falló o agotó su tiempo de espera. Por favor, inténtalo de nuevo.</p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-xl mx-auto bg-slate-800 p-8 rounded-xl shadow-lg border border-slate-700 mt-8">
-      <h2 className="text-2xl font-bold mb-6 text-center text-slate-100">Estado de Generación</h2>
-      
-      <div className="space-y-6">
-        {steps.map((step, index) => {
-          const isPast = index < currentIndex;
-          const isCurrent = index === currentIndex;
-          
-          return (
-            <div key={step.id} className={`flex items-center gap-4 ${isPast ? 'opacity-50' : ''}`}>
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border-2
-                ${isPast ? 'bg-indigo-900 border-indigo-500' : 
-                  isCurrent ? 'border-indigo-400 bg-indigo-500/20 text-indigo-400' : 
-                  'border-slate-600 text-slate-500'}`}
-              >
-                {isPast ? <CheckCircle2 className="w-6 h-6 text-indigo-400" /> : 
-                 isCurrent && step.id !== 'completed' ? <Loader2 className="w-5 h-5 animate-spin" /> : 
-                 <Music4 className="w-5 h-5" />}
+    <div className="max-w-2xl mx-auto">
+      <div className="bg-slate-900/80 backdrop-blur-xl p-8 md:p-10 rounded-3xl border border-slate-700/50 shadow-2xl relative overflow-hidden">
+        
+        {/* Animated Background Pulse */}
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-50"></div>
+        {status !== 'completed' && (
+          <div className="absolute top-0 left-0 w-1/2 h-1 bg-indigo-400 animate-slide-right"></div>
+        )}
+
+        <div className="flex items-center gap-4 mb-10">
+          <div className="p-3 bg-indigo-500/20 rounded-xl border border-indigo-500/30">
+            <Sparkles className="w-6 h-6 text-indigo-400" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold text-slate-100">Pipeline en Ejecución</h2>
+            <p className="text-slate-400 text-sm">Monitoreo de telemetría ML</p>
+          </div>
+        </div>
+        
+        <div className="space-y-8 relative before:absolute before:inset-0 before:ml-[1.125rem] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-indigo-500/50 before:via-slate-700 before:to-transparent">
+          {steps.map((step, index) => {
+            const isPast = index < currentIndex;
+            const isCurrent = index === currentIndex;
+            
+            return (
+              <div key={step.id} className={`relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active transition-opacity duration-500 ${isPast ? 'opacity-50' : 'opacity-100'}`}>
+                
+                {/* Icon Marker */}
+                <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-lg z-10 transition-colors duration-300
+                  ${isPast ? 'bg-indigo-900 border-indigo-500/50' : 
+                    isCurrent ? 'border-indigo-400 bg-indigo-500/20 text-indigo-400 shadow-[0_0_20px_-3px_rgba(99,102,241,0.5)]' : 
+                    'bg-slate-900 border-slate-700 text-slate-600'}`}
+                >
+                  {isPast ? <CheckCircle2 className="w-5 h-5 text-indigo-400" /> : 
+                   isCurrent && step.id !== 'completed' ? <Loader2 className="w-5 h-5 animate-spin" /> : 
+                   <span className="w-2 h-2 rounded-full bg-slate-500"></span>}
+                </div>
+                
+                {/* Text Card */}
+                <div className={`w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border transition-all duration-300
+                  ${isCurrent ? 'bg-indigo-500/10 border-indigo-500/30' : 'bg-slate-800/50 border-slate-700/50'}`}>
+                  <h3 className={`font-bold text-lg mb-1 ${isCurrent ? 'text-indigo-300' : 'text-slate-300'}`}>
+                    {step.label}
+                  </h3>
+                  <p className="text-slate-400 text-sm leading-snug">{step.desc}</p>
+                </div>
+
               </div>
-              <span className={`text-lg font-medium ${isCurrent ? 'text-indigo-300' : 'text-slate-400'}`}>
-                {step.label}
-              </span>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
+      {/* Completion Player */}
       {status === 'completed' && stemUrl && (
-        <div className="mt-8 p-6 bg-slate-900 rounded-lg border border-indigo-500/30 text-center animate-fade-in">
-          <h3 className="text-xl font-bold text-green-400 mb-4 flex justify-center items-center gap-2">
-            <CheckCircle2 />
-            ¡Tu stem está listo!
+        <div className="mt-8 bg-slate-900/80 backdrop-blur-xl p-8 rounded-3xl border border-green-500/30 shadow-[0_0_50px_-12px_rgba(34,197,94,0.2)] text-center animate-fade-in-up">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-500/20 text-green-400 mb-6 border border-green-500/30">
+            <Music4 className="w-8 h-8" />
+          </div>
+          <h3 className="text-3xl font-extrabold text-white mb-2">
+            ¡Síntesis Completada!
           </h3>
-          <audio controls className="w-full mb-4">
-            <source src={stemUrl} type="audio/wav" />
-            Tu navegador no soporta el elemento de audio.
-          </audio>
+          <p className="text-slate-400 mb-8">Tu pista aislada está lista para usarse en tu DAW.</p>
+          
+          <div className="bg-black/40 rounded-2xl p-4 mb-6">
+            <audio controls className="w-full custom-audio" src={stemUrl}>
+              Tu navegador no soporta audio.
+            </audio>
+          </div>
+          
           <a 
             href={stemUrl} 
             download
             target="_blank"
             rel="noreferrer"
-            className="inline-block bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
+            className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white font-bold py-4 px-8 rounded-xl transition-all shadow-lg hover:shadow-green-500/25 hover:-translate-y-1"
           >
-            Descargar Stem
+            <Download className="w-5 h-5" />
+            Descargar Archivo WAV/MP3
           </a>
         </div>
       )}
