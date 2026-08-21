@@ -58,6 +58,11 @@ CREATE POLICY "Permitir update publicos" ON public.generations FOR UPDATE TO ano
 -- RPCs (Remote Procedure Calls) - ORQUESTADOR DE WEBHOOKS
 -- ==============================================================================
 
+-- Eliminar las funciones antiguas para que Postgres no se confunda (Evitar error "not unique")
+DROP FUNCTION IF EXISTS webhook_phase_1(JSONB, UUID);
+DROP FUNCTION IF EXISTS webhook_phase_2(JSONB, UUID);
+DROP FUNCTION IF EXISTS webhook_phase_3(JSONB, UUID);
+
 CREATE OR REPLACE FUNCTION get_replicate_key() RETURNS TEXT
 LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
