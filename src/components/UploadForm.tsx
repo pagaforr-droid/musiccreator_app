@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback, FormEvent } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { supabase } from '../lib/supabase';
 import { Upload, Music, Settings, Loader2 } from 'lucide-react';
@@ -29,7 +29,7 @@ export function UploadForm({ sessionId, onGenerationStart }: UploadFormProps) {
     maxFiles: 1
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!file) {
       setError('Por favor, selecciona un archivo de audio.');
@@ -47,7 +47,7 @@ export function UploadForm({ sessionId, onGenerationStart }: UploadFormProps) {
       // 1. Upload to Supabase Storage
       const fileExt = file.name.split('.').pop();
       const fileName = `${sessionId}_${Date.now()}.${fileExt}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('reference_audio')
         .upload(fileName, file);
 

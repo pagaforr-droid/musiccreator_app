@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { UploadForm } from './components/UploadForm';
 import { ProgressTracker } from './components/ProgressTracker';
 
