@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS public.app_config (
 );
 
 ALTER TABLE public.app_config ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Block anon on config" ON public.app_config;
 CREATE POLICY "Block anon on config" ON public.app_config FOR ALL TO anon USING (false);
 
 INSERT INTO public.app_config (key, value) VALUES ('replicate_api_key', 'INSERT_YOUR_REPLICATE_API_KEY_HERE')
@@ -40,8 +41,14 @@ CREATE TABLE IF NOT EXISTS public.generations (
 );
 
 ALTER TABLE public.generations ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Permitir inserts publicos" ON public.generations;
 CREATE POLICY "Permitir inserts publicos" ON public.generations FOR INSERT TO anon WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Permitir select publicos" ON public.generations;
 CREATE POLICY "Permitir select publicos" ON public.generations FOR SELECT TO anon USING (true);
+
+DROP POLICY IF EXISTS "Permitir update publicos" ON public.generations;
 CREATE POLICY "Permitir update publicos" ON public.generations FOR UPDATE TO anon USING (true);
 
 -- ==============================================================================
@@ -190,11 +197,13 @@ $$;
 -- STORAGE SECURITY POLICIES (Fixing "new row violates row-level security policy")
 -- ==============================================================================
 -- Permitir subida de archivos (INSERT) al bucket reference_audio para usuarios anónimos
+DROP POLICY IF EXISTS "Permitir subida anonima a reference_audio" ON storage.objects;
 CREATE POLICY "Permitir subida anonima a reference_audio" 
 ON storage.objects FOR INSERT TO anon 
 WITH CHECK (bucket_id = 'reference_audio');
 
 -- Permitir lectura (SELECT) de archivos en el bucket reference_audio
+DROP POLICY IF EXISTS "Permitir lectura publica de reference_audio" ON storage.objects;
 CREATE POLICY "Permitir lectura publica de reference_audio" 
 ON storage.objects FOR SELECT TO anon 
 USING (bucket_id = 'reference_audio');
