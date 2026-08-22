@@ -137,7 +137,7 @@ END;
 $$;
 
 -- FASE 2: Webhook Fase 1
-CREATE OR REPLACE FUNCTION webhook_phase_1(id TEXT DEFAULT NULL, status TEXT DEFAULT NULL, output JSONB DEFAULT NULL, error TEXT DEFAULT NULL, version TEXT DEFAULT NULL, created_at TEXT DEFAULT NULL, started_at TEXT DEFAULT NULL, completed_at TEXT DEFAULT NULL, logs TEXT DEFAULT NULL, input JSONB DEFAULT NULL, metrics JSONB DEFAULT NULL, urls JSONB DEFAULT NULL)
+CREATE OR REPLACE FUNCTION webhook_phase_1(payload JSONB)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
     v_gen_id UUID;
@@ -146,18 +146,27 @@ DECLARE
     v_instrument TEXT;
     v_style TEXT;
     req_id BIGINT;
+    v_replicate_id TEXT;
+    v_status TEXT;
+    v_error TEXT;
+    v_output JSONB;
 BEGIN
-    SELECT g.id INTO v_gen_id FROM public.generations g WHERE g.replicate_id = webhook_phase_1.id;
+    v_replicate_id := payload->>'id';
+    v_status := payload->>'status';
+    v_error := payload->>'error';
+    v_output := payload->'output';
+
+    SELECT g.id INTO v_gen_id FROM public.generations g WHERE g.replicate_id = v_replicate_id;
     IF v_gen_id IS NULL THEN RETURN jsonb_build_object('status', 'error', 'msg', 'Generation not found'); END IF;
 
-    IF status != 'succeeded' THEN
+    IF v_status != 'succeeded' THEN
         UPDATE public.generations SET status = 'failed', updated_at = NOW() WHERE id = v_gen_id;
-        RETURN jsonb_build_object('status', 'error', 'msg', error);
+        RETURN jsonb_build_object('status', 'error', 'msg', v_error);
     END IF;
 
-    IF jsonb_typeof(output) = 'object' THEN
-        v_bpm := (output->>'bpm')::NUMERIC;
-        v_chords := output->'chords';
+    IF jsonb_typeof(v_output) = 'object' THEN
+        v_bpm := (v_output->>'bpm')::NUMERIC;
+        v_chords := v_output->'chords';
     END IF;
 
     UPDATE public.generations 
@@ -186,22 +195,31 @@ END;
 $$;
 
 -- FASE 3: Webhook Fase 2
-CREATE OR REPLACE FUNCTION webhook_phase_2(id TEXT DEFAULT NULL, status TEXT DEFAULT NULL, output JSONB DEFAULT NULL, error TEXT DEFAULT NULL, version TEXT DEFAULT NULL, created_at TEXT DEFAULT NULL, started_at TEXT DEFAULT NULL, completed_at TEXT DEFAULT NULL, logs TEXT DEFAULT NULL, input JSONB DEFAULT NULL, metrics JSONB DEFAULT NULL, urls JSONB DEFAULT NULL)
+CREATE OR REPLACE FUNCTION webhook_phase_2(payload JSONB)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
     v_gen_id UUID;
     v_generated_audio TEXT;
     req_id BIGINT;
+    v_replicate_id TEXT;
+    v_status TEXT;
+    v_error TEXT;
+    v_output JSONB;
 BEGIN
-    SELECT g.id INTO v_gen_id FROM public.generations g WHERE g.replicate_id = webhook_phase_2.id;
+    v_replicate_id := payload->>'id';
+    v_status := payload->>'status';
+    v_error := payload->>'error';
+    v_output := payload->'output';
+
+    SELECT g.id INTO v_gen_id FROM public.generations g WHERE g.replicate_id = v_replicate_id;
     IF v_gen_id IS NULL THEN RETURN jsonb_build_object('status', 'error', 'msg', 'Generation not found'); END IF;
 
-    IF status != 'succeeded' THEN
+    IF v_status != 'succeeded' THEN
         UPDATE public.generations SET status = 'failed', updated_at = NOW() WHERE id = v_gen_id;
-        RETURN jsonb_build_object('status', 'error', 'msg', error);
+        RETURN jsonb_build_object('status', 'error', 'msg', v_error);
     END IF;
 
-    v_generated_audio := output#>>'{}';
+    v_generated_audio := v_output#>>'{}';
     UPDATE public.generations SET status = 'cleaning', updated_at = NOW() WHERE id = v_gen_id;
 
     SELECT net.http_post(
@@ -221,26 +239,35 @@ END;
 $$;
 
 -- FASE FINAL: Webhook Fase 3
-CREATE OR REPLACE FUNCTION webhook_phase_3(id TEXT DEFAULT NULL, status TEXT DEFAULT NULL, output JSONB DEFAULT NULL, error TEXT DEFAULT NULL, version TEXT DEFAULT NULL, created_at TEXT DEFAULT NULL, started_at TEXT DEFAULT NULL, completed_at TEXT DEFAULT NULL, logs TEXT DEFAULT NULL, input JSONB DEFAULT NULL, metrics JSONB DEFAULT NULL, urls JSONB DEFAULT NULL)
+CREATE OR REPLACE FUNCTION webhook_phase_3(payload JSONB)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
     v_gen_id UUID;
     v_instrument TEXT;
     v_final_url TEXT;
+    v_replicate_id TEXT;
+    v_status TEXT;
+    v_error TEXT;
+    v_output JSONB;
 BEGIN
-    SELECT g.id INTO v_gen_id FROM public.generations g WHERE g.replicate_id = webhook_phase_3.id;
+    v_replicate_id := payload->>'id';
+    v_status := payload->>'status';
+    v_error := payload->>'error';
+    v_output := payload->'output';
+
+    SELECT g.id INTO v_gen_id FROM public.generations g WHERE g.replicate_id = v_replicate_id;
     IF v_gen_id IS NULL THEN RETURN jsonb_build_object('status', 'error', 'msg', 'Generation not found'); END IF;
 
-    IF status != 'succeeded' THEN
+    IF v_status != 'succeeded' THEN
         UPDATE public.generations SET status = 'failed', updated_at = NOW() WHERE id = v_gen_id;
-        RETURN jsonb_build_object('status', 'error', 'msg', error);
+        RETURN jsonb_build_object('status', 'error', 'msg', v_error);
     END IF;
 
     SELECT target_instrument INTO v_instrument FROM public.generations WHERE id = v_gen_id;
 
-    IF v_instrument = 'Bajo' THEN v_final_url := output->>'bass';
-    ELSIF v_instrument = 'Batería' THEN v_final_url := output->>'drums';
-    ELSE v_final_url := output->>'other'; END IF;
+    IF v_instrument = 'Bajo' THEN v_final_url := v_output->>'bass';
+    ELSIF v_instrument = 'Batería' THEN v_final_url := v_output->>'drums';
+    ELSE v_final_url := v_output->>'other'; END IF;
 
     UPDATE public.generations SET final_stem_url = v_final_url, status = 'completed', updated_at = NOW() WHERE id = v_gen_id;
     RETURN jsonb_build_object('status', 'success');
