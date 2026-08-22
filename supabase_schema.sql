@@ -59,32 +59,33 @@ CREATE TABLE IF NOT EXISTS public.request_mappings (
 );
 
 -- ==============================================================================
--- TRIGGER PARA SINCRONIZAR IDs DE REPLICATE
+-- LOOKUP FUNCTION PARA VINCULAR REPLICATE ID SIN TRIGGERS
 -- ==============================================================================
-CREATE OR REPLACE FUNCTION link_replicate_id_to_gen() RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION get_gen_id_from_replicate(p_replicate_id TEXT) RETURNS UUID AS $$
 DECLARE
-    v_replicate_id TEXT;
     v_gen_id UUID;
+    v_req_id BIGINT;
 BEGIN
-    IF NEW.status_code = 201 OR NEW.status_code = 200 THEN
-        v_replicate_id := (NEW.content::jsonb)->>'id';
-        IF v_replicate_id IS NOT NULL THEN
-            SELECT gen_id INTO v_gen_id FROM public.request_mappings WHERE req_id = NEW.id;
-            IF v_gen_id IS NOT NULL THEN
-                UPDATE public.generations SET replicate_id = v_replicate_id WHERE id = v_gen_id;
-                DELETE FROM public.request_mappings WHERE req_id = NEW.id; -- Limpieza
-            END IF;
+    -- 1. Si ya lo vinculamos antes, lo devolvemos directo
+    SELECT id INTO v_gen_id FROM public.generations WHERE replicate_id = p_replicate_id LIMIT 1;
+    IF v_gen_id IS NOT NULL THEN RETURN v_gen_id; END IF;
+
+    -- 2. Si es el primer webhook, buscamos el ID de Replicate en las respuestas HTTP recientes de pg_net
+    SELECT id INTO v_req_id FROM net._http_response WHERE (content::jsonb)->>'id' = p_replicate_id LIMIT 1;
+    IF v_req_id IS NOT NULL THEN
+        -- 3. Cruzamos con nuestra tabla de mapeo
+        SELECT gen_id INTO v_gen_id FROM public.request_mappings WHERE req_id = v_req_id LIMIT 1;
+        IF v_gen_id IS NOT NULL THEN
+            -- 4. Guardamos el vinculo permanentemente
+            UPDATE public.generations SET replicate_id = p_replicate_id WHERE id = v_gen_id;
+            DELETE FROM public.request_mappings WHERE req_id = v_req_id;
+            RETURN v_gen_id;
         END IF;
     END IF;
-    RETURN NEW;
+
+    RETURN NULL;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
-DROP TRIGGER IF EXISTS trg_link_replicate_id ON net._http_response;
-CREATE TRIGGER trg_link_replicate_id
-AFTER INSERT ON net._http_response
-FOR EACH ROW EXECUTE FUNCTION link_replicate_id_to_gen();
-
 
 -- ==============================================================================
 -- RPCs (Remote Procedure Calls) - ORQUESTADOR DE WEBHOOKS
@@ -156,7 +157,8 @@ BEGIN
     v_error := payload->>'error';
     v_output := payload->'output';
 
-    SELECT g.id INTO v_gen_id FROM public.generations g WHERE g.replicate_id = v_replicate_id;
+    -- Usamos nuestra funcion de busqueda pasiva
+    v_gen_id := get_gen_id_from_replicate(v_replicate_id);
     IF v_gen_id IS NULL THEN RETURN jsonb_build_object('status', 'error', 'msg', 'Generation not found'); END IF;
 
     IF v_status != 'succeeded' THEN
@@ -211,7 +213,7 @@ BEGIN
     v_error := payload->>'error';
     v_output := payload->'output';
 
-    SELECT g.id INTO v_gen_id FROM public.generations g WHERE g.replicate_id = v_replicate_id;
+    v_gen_id := get_gen_id_from_replicate(v_replicate_id);
     IF v_gen_id IS NULL THEN RETURN jsonb_build_object('status', 'error', 'msg', 'Generation not found'); END IF;
 
     IF v_status != 'succeeded' THEN
@@ -255,7 +257,7 @@ BEGIN
     v_error := payload->>'error';
     v_output := payload->'output';
 
-    SELECT g.id INTO v_gen_id FROM public.generations g WHERE g.replicate_id = v_replicate_id;
+    v_gen_id := get_gen_id_from_replicate(v_replicate_id);
     IF v_gen_id IS NULL THEN RETURN jsonb_build_object('status', 'error', 'msg', 'Generation not found'); END IF;
 
     IF v_status != 'succeeded' THEN
