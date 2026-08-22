@@ -90,6 +90,9 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- ==============================================================================
 -- RPCs (Remote Procedure Calls) - ORQUESTADOR DE WEBHOOKS
 -- ==============================================================================
+DROP FUNCTION IF EXISTS webhook_phase_1(JSONB);
+DROP FUNCTION IF EXISTS webhook_phase_2(JSONB);
+DROP FUNCTION IF EXISTS webhook_phase_3(JSONB);
 DROP FUNCTION IF EXISTS webhook_phase_1(JSONB, UUID);
 DROP FUNCTION IF EXISTS webhook_phase_2(JSONB, UUID);
 DROP FUNCTION IF EXISTS webhook_phase_3(JSONB, UUID);
@@ -138,7 +141,7 @@ END;
 $$;
 
 -- FASE 2: Webhook Fase 1
-CREATE OR REPLACE FUNCTION webhook_phase_1(payload JSONB)
+CREATE OR REPLACE FUNCTION webhook_phase_1(JSONB)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
     v_gen_id UUID;
@@ -152,10 +155,10 @@ DECLARE
     v_error TEXT;
     v_output JSONB;
 BEGIN
-    v_replicate_id := payload->>'id';
-    v_status := payload->>'status';
-    v_error := payload->>'error';
-    v_output := payload->'output';
+    v_replicate_id := $1->>'id';
+    v_status := $1->>'status';
+    v_error := $1->>'error';
+    v_output := $1->'output';
 
     -- Usamos nuestra funcion de busqueda pasiva
     v_gen_id := get_gen_id_from_replicate(v_replicate_id);
@@ -197,7 +200,7 @@ END;
 $$;
 
 -- FASE 3: Webhook Fase 2
-CREATE OR REPLACE FUNCTION webhook_phase_2(payload JSONB)
+CREATE OR REPLACE FUNCTION webhook_phase_2(JSONB)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
     v_gen_id UUID;
@@ -208,10 +211,10 @@ DECLARE
     v_error TEXT;
     v_output JSONB;
 BEGIN
-    v_replicate_id := payload->>'id';
-    v_status := payload->>'status';
-    v_error := payload->>'error';
-    v_output := payload->'output';
+    v_replicate_id := $1->>'id';
+    v_status := $1->>'status';
+    v_error := $1->>'error';
+    v_output := $1->'output';
 
     v_gen_id := get_gen_id_from_replicate(v_replicate_id);
     IF v_gen_id IS NULL THEN RETURN jsonb_build_object('status', 'error', 'msg', 'Generation not found'); END IF;
@@ -241,7 +244,7 @@ END;
 $$;
 
 -- FASE FINAL: Webhook Fase 3
-CREATE OR REPLACE FUNCTION webhook_phase_3(payload JSONB)
+CREATE OR REPLACE FUNCTION webhook_phase_3(JSONB)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
     v_gen_id UUID;
@@ -252,10 +255,10 @@ DECLARE
     v_error TEXT;
     v_output JSONB;
 BEGIN
-    v_replicate_id := payload->>'id';
-    v_status := payload->>'status';
-    v_error := payload->>'error';
-    v_output := payload->'output';
+    v_replicate_id := $1->>'id';
+    v_status := $1->>'status';
+    v_error := $1->>'error';
+    v_output := $1->'output';
 
     v_gen_id := get_gen_id_from_replicate(v_replicate_id);
     IF v_gen_id IS NULL THEN RETURN jsonb_build_object('status', 'error', 'msg', 'Generation not found'); END IF;
